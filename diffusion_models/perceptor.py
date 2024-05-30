@@ -46,9 +46,6 @@ clip_cache = {}
 def get_clip(model_name):
     if model_name not in clip_cache:
         image_fn, text_fn, clip_params, preprocess = clip_jax.load(model_name)
-        model_path = fetch_model(model_name, '/content/drive/MyDrive/AI/models/')
-        clip_params = LazyParams.pt(model_path)  # Use the pt method to create LazyParams instance
+        clip_params = LazyParams(params=clip_params) # Move to cpu.
         clip_cache[model_name] = lambda: Perceptor(image_fn, text_fn, clip_params(), preprocess)
     return clip_cache[model_name]()
-
-
