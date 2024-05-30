@@ -4,25 +4,27 @@ import jax.numpy as jnp
 def upsample2x_base(image, kernel):
     ksize = kernel.shape[0]
     (n, c, h, w) = image.shape
-    out = jax.lax.conv_general_dilated(image.reshape(n*c,1,h,w),
-                                       kernel.reshape(1,1,ksize,ksize),
-                                       window_strides=[1,1],
-                                       padding=[(ksize//2,ksize//2),(ksize//2,ksize//2)],
-                                       lhs_dilation=[2,2],
-                                       rhs_dilation=None,
-                                       dimension_numbers=('NCHW',
-                                                          'IOHW', 'NCHW'))
+    out = jax.lax.conv_general_dilated(
+        image.reshape(n * c, 1, h, w),
+        kernel.reshape(1, 1, ksize, ksize),
+        window_strides=[1, 1],
+        padding=[(ksize // 2, ksize // 2), (ksize // 2, ksize // 2)],
+        lhs_dilation=[2, 2],
+        rhs_dilation=None,
+        dimension_numbers=('NCHW', 'OIHW', 'NCHW')
+    )
 
     # normalization for parts that touch the zero-padding
-    norm = jax.lax.conv_general_dilated(jnp.ones((1,1,h,w)),
-                                        kernel.reshape(1,1,ksize,ksize),
-                                        window_strides=[1,1],
-                                        padding=[(ksize//2,ksize//2),(ksize//2,ksize//2)],
-                                        lhs_dilation=[2,2],
-                                        rhs_dilation=None,
-                                        dimension_numbers=('NCHW',
-                                                           'IOHW', 'NCHW'))
-    return (out / norm).reshape(n, c, 2*h,2*w)
+    norm = jax.lax.conv_general_dilated(
+        jnp.ones((1, 1, h, w)),
+        kernel.reshape(1, 1, ksize, ksize),
+        window_strides=[1, 1],
+        padding=[(ksize // 2, ksize // 2), (ksize // 2, ksize // 2)],
+        lhs_dilation=[2, 2],
+        rhs_dilation=None,
+        dimension_numbers=('NCHW', 'OIHW', 'NCHW')
+    )
+    return (out / norm).reshape(n, c, 2 * h, 2 * w)
 
 def upsample2x(image, method='linear'):
     if method == 'lanczos3':
@@ -39,32 +41,34 @@ def upsample2x(image, method='linear'):
     elif method == 'linear':
         # extracted from the gradients of jax.image.resize(method='linear')
         kernel = jnp.array([0.25, 0.75, 0.75, 0.25])
-    kernel = kernel.reshape(-1,1) * kernel.reshape(1,-1)
+    kernel = kernel.reshape(-1, 1) * kernel.reshape(1, -1)
 
     return upsample2x_base(image, kernel)
 
 def downsample2x_base(image, kernel):
     ksize = kernel.shape[0]
     (n, c, h, w) = image.shape
-    out = jax.lax.conv_general_dilated(image.reshape(n*c,1,h,w),
-                                       kernel.reshape(1,1,ksize,ksize),
-                                       window_strides=[2,2],
-                                       padding=[(ksize//2-1,ksize//2-1),(ksize//2-1,ksize//2-1)],
-                                       lhs_dilation=[1,1],
-                                       rhs_dilation=None,
-                                       dimension_numbers=('NCHW',
-                                                          'IOHW', 'NCHW'))
+    out = jax.lax.conv_general_dilated(
+        image.reshape(n * c, 1, h, w),
+        kernel.reshape(1, 1, ksize, ksize),
+        window_strides=[2, 2],
+        padding=[(ksize // 2 - 1, ksize // 2 - 1), (ksize // 2 - 1, ksize // 2 - 1)],
+        lhs_dilation=[1, 1],
+        rhs_dilation=None,
+        dimension_numbers=('NCHW', 'OIHW', 'NCHW')
+    )
 
     # normalization for parts that touch the zero-padding
-    norm = jax.lax.conv_general_dilated(jnp.ones((1,1,h,w)),
-                                        kernel.reshape(1,1,ksize,ksize),
-                                        window_strides=[2,2],
-                                        padding=[(ksize//2-1,ksize//2-1),(ksize//2-1,ksize//2-1)],
-                                        lhs_dilation=[1,1],
-                                        rhs_dilation=None,
-                                        dimension_numbers=('NCHW',
-                                                           'IOHW', 'NCHW'))
-    return (out / norm).reshape(n, c, h//2,w//2)
+    norm = jax.lax.conv_general_dilated(
+        jnp.ones((1, 1, h, w)),
+        kernel.reshape(1, 1, ksize, ksize),
+        window_strides=[2, 2],
+        padding=[(ksize // 2 - 1, ksize // 2 - 1), (ksize // 2 - 1, ksize // 2 - 1)],
+        lhs_dilation=[1, 1],
+        rhs_dilation=None,
+        dimension_numbers=('NCHW', 'OIHW', 'NCHW')
+    )
+    return (out / norm).reshape(n, c, h // 2, w // 2)
 
 def downsample2x(image, method='linear'):
     if method == 'linear':
@@ -76,5 +80,5 @@ def downsample2x(image, method='linear'):
                             -0.066637322306633, 0.13550527393817902, 0.44638532400131226,
                             0.44638532400131226, 0.13550527393817902, -0.066637322306633,
                             -0.03399861603975296, 0.015056144446134567, 0.003689131001010537])
-    kernel = kernel.reshape(-1,1) * kernel.reshape(1,-1)
+    kernel = kernel.reshape(-1, 1) * kernel.reshape(1, -1)
     return downsample2x_base(image, kernel)
