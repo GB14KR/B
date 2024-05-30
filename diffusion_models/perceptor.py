@@ -46,6 +46,7 @@ clip_cache = {}
 def get_clip(model_name):
     if model_name not in clip_cache:
         image_fn, text_fn, clip_params, preprocess = clip_jax.load(model_name)
-        clip_params = LazyParams.load(url=model_name)  # Assuming the URL for the model is the model name
+        clip_params = LazyParams.pt(url=model_name)  # Use the pt method to create LazyParams instance
         clip_cache[model_name] = lambda: Perceptor(image_fn, text_fn, clip_params(), preprocess)
     return clip_cache[model_name]()
+
