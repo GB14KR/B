@@ -3,8 +3,6 @@ import jax.numpy as jnp
 import requests, io
 import numpy as np
 import jaxtorch
-
-
 from diffusion_models.cache import WeakCache
 
 class LazyParams(object):
@@ -15,9 +13,11 @@ class LazyParams(object):
         self.cache = WeakCache(jnp.array)
         self.load = load
         self.params = jax.tree_util.tree_map(np.asarray, params)
+
     def __call__(self, *args, **kwargs):
         if self.params is None:
-            self.params = jax.tree_util.tree_map(np.asarray, self.load(*args, **kwargs))
+            if self.load is not None and callable(self.load):
+                self.params = jax.tree_util.tree_map(np.asarray, self.load(*args, **kwargs))
         return jax.tree_util.tree_map(lambda x: self.cache(x) if type(x) is np.ndarray else x, self.params)
 
     @staticmethod
