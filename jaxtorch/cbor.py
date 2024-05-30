@@ -1,5 +1,6 @@
 """Wraps cbor2 with hooks for encoding and decoding tensors."""
 import jax
+import jax.numpy as jnp
 import cbor2
 import numpy as np
 import functools
@@ -17,25 +18,31 @@ TAG_ARRAY = 40
 def encode_flat(arr):
     if arr.dtype == np.float32:
         return CBORTag(TAG_FLOAT32, arr.tobytes())
+    if arr.dtype == np.float64:
+        return CBORTag(TAG_FLOAT64, arr.tobytes())
     if arr.dtype == np.int32:
         return CBORTag(TAG_INT32, arr.tobytes())
+    if arr.dtype == np.int64:
+        return CBORTag(TAG_INT64, arr.tobytes())
     else:
-        raise NotImplemented
+        raise NotImplementedError(f"Encoding not implemented for dtype {arr.dtype}")
 
 def default_encoder(encoder, value):
-    if isinstance(value, jax.numpy.DeviceArray):
-        encoder.encode(np.array(value))
+    if isinstance(value, jax.Array):
+        encoder.encode(CBORTag(TAG_ARRAY, [list(value.shape), encode_flat(np.array(value))]))
     elif isinstance(value, np.ndarray):
         encoder.encode(CBORTag(TAG_ARRAY, [list(value.shape), encode_flat(value)]))
     else:
-        raise NotImplemented
+        raise NotImplementedError(f"Encoding not implemented for type {type(value)}")
 
 def tag_hook(decoder, tag, shareable_index=None):
     if tag.tag == TAG_ARRAY:
-        [shape, value] = tag.value
+        shape, value = tag.value
         return value.reshape(shape)
     elif tag.tag == TAG_FLOAT32:
         return np.frombuffer(tag.value, dtype=np.float32)
+    elif tag.tag == TAG_FLOAT64:
+        return np.frombuffer(tag.value, dtype=np.float64)
     elif tag.tag == TAG_INT32:
         return np.frombuffer(tag.value, dtype=np.int32)
     elif tag.tag == TAG_INT64:
