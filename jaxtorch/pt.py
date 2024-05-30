@@ -1,11 +1,10 @@
-"""Load and save jax state dicts and other objects as pytorch
+"""
+Load and save jax state dicts and other objects as pytorch
 checkpoint files.
-
 """
 
 import jax
 import jax.numpy as jnp
-import jaxlib
 import numpy as np
 import torch
 
@@ -21,9 +20,9 @@ def load(f):
 
 @torch.no_grad()
 def save(obj, f):
-    """Converts jax arrays (anything under jaxlib.xla_extension.DeviceArrayBase) to torch.Tensor before saving."""
+    """Converts jax arrays (anything under jax.Array) to torch.Tensor before saving."""
     def to_torch(x):
-        if isinstance(x, jaxlib.xla_extension.DeviceArrayBase):
+        if isinstance(x, jax.Array):
             return torch.as_tensor(np.array(x))
         return x
     torch_dict = jax.tree_util.tree_map(to_torch, obj)
