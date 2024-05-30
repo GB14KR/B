@@ -1,15 +1,13 @@
 import math
 import jax
 import jax.numpy as jnp
-import jaxtorch
-import numbers
 from jaxtorch.core import Module, PRNG, Context
 from jaxtorch import init
+import jaxtorch.nn.functional
 
 class Identity(Module):
     def forward(self, cx, x):
         return x
-
 
 class ModuleList(Module):
     def __init__(self, *modules):
@@ -35,13 +33,11 @@ class ModuleList(Module):
         for (i, m) in enumerate(self.modules):
             yield (f'{i}', m)
 
-
 class Sequential(ModuleList):
     def forward(self, cx, x):
         for module in self.modules:
             x = module(cx, x)
         return x
-
 
 class Linear(Module):
     def __init__(self, in_features: int, out_features: int, bias: bool = True):
@@ -56,7 +52,7 @@ class Linear(Module):
 
     def forward(self, cx, x):
         y = x @ jnp.transpose(cx[self.weight])
-        if self.bias:
+        if self.bias is not None:
             y = y + cx[self.bias]
         return y
 
@@ -64,7 +60,6 @@ class Linear(Module):
         return 'in_features={}, out_features={}, bias={}'.format(
             self.in_features, self.out_features, self.bias is not None
         )
-
 
 class Embedding(Module):
     def __init__(self, num_embeddings: int, embedding_dim: int):
@@ -78,24 +73,11 @@ class Embedding(Module):
 
     def extra_repr(self) -> str:
         s = '{num_embeddings}, {embedding_dim}'
-        # if self.padding_idx is not None:
-        #     s += ', padding_idx={padding_idx}'
-        # if self.max_norm is not None:
-        #     s += ', max_norm={max_norm}'
-        # if self.norm_type != 2:
-        #     s += ', norm_type={norm_type}'
-        # if self.scale_grad_by_freq is not False:
-        #     s += ', scale_grad_by_freq={scale_grad_by_freq}'
-        # if self.sparse is not False:
-        #     s += ', sparse=True'
         return s.format(**self.__dict__)
-
-
 
 class Tanh(Module):
     def forward(self, cx, x):
         return jnp.tanh(x)
-
 
 class Dropout(Module):
     def __init__(self, p=0.5):
@@ -104,7 +86,8 @@ class Dropout(Module):
     def forward(self, cx, x):
         if cx.mode == 'eval':
             return x
-        mask = cx.random.bernoulli(1.0 - self.rate, shape=x.shape)
+        key = cx.rng()
+        mask = jax.random.bernoulli(key, p=1.0 - self.rate, shape=x.shape)
         return x * mask / (1.0 - self.rate)
 
 class Dropout2d(Module):
@@ -114,8 +97,9 @@ class Dropout2d(Module):
     def forward(self, cx, x):
         if cx.mode == 'eval':
             return x
-        drop_shape = x.shape[:2] + (1,) * len(x.shape[2:])
-        mask = cx.random.bernoulli(1.0 - self.rate, shape=drop_shape)
+        key = cx.rng()
+        drop_shape = x.shape[:2] + (1,) * (x.ndim - 2)
+        mask = jax.random.bernoulli(key, p=1.0 - self.rate, shape=drop_shape)
         return x * mask / (1.0 - self.rate)
 
 class GELU(Module):
@@ -133,7 +117,6 @@ class LeakyReLU(Module):
     def forward(self, cx, x):
         return jax.nn.leaky_relu(x, self.negative_slope)
 
-
 class LayerNorm(Module):
     def __init__(self, normalized_shape, eps=1e-05, elementwise_affine=True):
         if isinstance(normalized_shape, numbers.Integral):
@@ -147,14 +130,15 @@ class LayerNorm(Module):
         else:
             self.weight = None
             self.bias = None
-        self.axes = tuple(-i for i in range(1, len(normalized_shape)+1))
+        self.axes = tuple(-i for i in range(1, len(normalized_shape) + 1))
 
     def forward(self, cx, x):
         mu = x.mean(axis=self.axes, keepdims=True)
         sigma = jnp.sqrt((x - mu).square().mean(axis=self.axes, keepdims=True) + self.eps)
         normed = (x - mu) / sigma
-        return cx[self.weight] * normed + cx[self.bias]
-
+        if self.elementwise_affine:
+            normed = normed * cx[self.weight] + cx[self.bias]
+        return normed
 
 class Conv1d(Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True, zero_init=False):
@@ -163,9 +147,9 @@ class Conv1d(Module):
         self.padding = padding
         self.dilation = dilation
         self.groups = groups
-        self.weight = init.kaiming_uniform(out_channels, in_channels//groups, kernel_size, a=math.sqrt(5.0))
+        self.weight = init.kaiming_uniform(out_channels, in_channels // groups, kernel_size, a=math.sqrt(5.0))
         if zero_init:
-            self.weight = init.zeros(out_channels, in_channels//groups, kernel_size)
+            self.weight = init.zeros(out_channels, in_channels // groups, kernel_size)
         self.use_bias = bias
         if self.use_bias:
             self.bias = init.zeros(out_channels)
@@ -179,7 +163,6 @@ class Conv1d(Module):
                                              dilation=self.dilation,
                                              groups=self.groups)
 
-
 class Conv2d(Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True, zero_init=False):
         assert in_channels % groups == 0
@@ -187,9 +170,9 @@ class Conv2d(Module):
         self.padding = padding
         self.dilation = dilation
         self.groups = groups
-        self.weight = init.kaiming_uniform(out_channels, in_channels//groups, kernel_size, kernel_size, a=math.sqrt(5.0))
+        self.weight = init.kaiming_uniform(out_channels, in_channels // groups, kernel_size, kernel_size, a=math.sqrt(5.0))
         if zero_init:
-            self.weight = init.zeros(out_channels, in_channels//groups, kernel_size, kernel_size)
+            self.weight = init.zeros(out_channels, in_channels // groups, kernel_size, kernel_size)
         self.use_bias = bias
         if self.use_bias:
             self.bias = init.zeros(out_channels)
@@ -202,7 +185,6 @@ class Conv2d(Module):
                                              padding=self.padding,
                                              dilation=self.dilation,
                                              groups=self.groups)
-
 
 class SiLU(Module):
     def forward(self, cx, x):
@@ -225,9 +207,9 @@ class GroupNorm(Module):
     def forward(self, cx, x):
         B, C, *rest = x.shape
         assert C == self.num_channels
-        x = x.reshape([B, self.num_groups, C//self.num_groups, *rest])
-        mu = x.mean(axis=tuple(range(2,len(x.shape))), keepdims=True)
-        var = x.var(axis=tuple(range(2,len(x.shape))), keepdims=True)
+        x = x.reshape([B, self.num_groups, C // self.num_groups, *rest])
+        mu = x.mean(axis=tuple(range(2, len(x.shape))), keepdims=True)
+        var = x.var(axis=tuple(range(2, len(x.shape))), keepdims=True)
         y = (x - mu) / jnp.sqrt(var + self.eps)
         y = y.reshape([B, C, *rest])
         if self.affine:
@@ -240,11 +222,15 @@ class GroupNorm(Module):
 class PixelUnshuffle(Module):
     def __init__(self, downscale_factor):
         self.downscale_factor = downscale_factor
+
     def forward(self, cx, x):
-        return x.rearrange('... c (h r) (w s) -> ... (c r s) h w', r = self.downscale_factor, s = self.downscale_factor)
+        factor = self.downscale_factor
+        return jnp.reshape(x, (x.shape[0], x.shape[1] // (factor * factor), factor, factor, x.shape[2] // factor, x.shape[3] // factor)).transpose(0, 1, 4, 2, 5, 3).reshape(x.shape[0], x.shape[1] * (factor * factor), x.shape[2] // factor, x.shape[3] // factor)
 
 class PixelShuffle(Module):
     def __init__(self, upscale_factor):
         self.upscale_factor = upscale_factor
+
     def forward(self, cx, x):
-        return x.rearrange('... (c r s) h w -> ... c (h r) (w s)', r = self.upscale_factor, s = self.upscale_factor)
+        factor = self.upscale_factor
+        return jnp.reshape(x, (x.shape[0], x.shape[1] // (factor * factor), factor, factor, x.shape[2], x.shape[3])).transpose(0, 1, 4, 2, 5, 3).reshape(x.shape[0], x.shape[1] // (factor * factor), x.shape[2] * factor, x.shape[3] * factor)
