@@ -46,6 +46,7 @@ clip_cache = {}
 def get_clip(model_name):
     if model_name not in clip_cache:
         image_fn, text_fn, clip_params, preprocess = clip_jax.load(model_name)
-        clip_params = LazyParams(params=clip_params) # Move to cpu.
-        clip_cache[model_name] = lambda: Perceptor(image_fn, text_fn, clip_params(), preprocess)
+        # Load clip_params lazily onto the GPU using LazyParams
+        clip_params = LazyParams.pt('/content/drive/MyDrive/AI/models/cc12m_1.pth')()
+        clip_cache[model_name] = lambda: Perceptor(image_fn, text_fn, clip_params, preprocess)
     return clip_cache[model_name]()
