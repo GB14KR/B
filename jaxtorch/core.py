@@ -34,15 +34,13 @@ class PRNG(object):
     """Just a stateful wrapper for a jax.random.PRNGKey."""
     def __init__(self, key):
         self.key = key
+
     def split(self):
         (self.key, subkey) = jax.random.split(self.key)
         return subkey
 
 class ContextRandom(object):
-    """Lives inside a Context and provides convenience functions for
-random number generation that use the Context's stateful PRNG.
-
-    """
+    """Lives inside a Context and provides convenience functions for random number generation that use the Context's stateful PRNG."""
     def __init__(self, rng):
         self.rng = rng
 
@@ -109,11 +107,11 @@ class Context(object):
             raise TypeError('Expected a Param for indexing into Context')
 
     def tree_flatten(self):
-        return (self.px, self.rng.split()), (self.mode,)
+        return (self.px, self.rng.key), (self.mode,)
 
     @staticmethod
     def tree_unflatten(aux, values):
-        (px, key) = values
+        px, key = values
         (mode,) = aux
         return Context(px, key, mode=mode)
 
@@ -127,38 +125,25 @@ class Module(object):
         raise NotImplementedError
 
     def self_named_modules(self):
-        """Yields a sequence of (str, Module) for direct children of this
-           module. May be overridden.
-
-        """
+        """Yields a sequence of (str, Module) for direct children of this module. May be overridden."""
         for (name, val) in self.__dict__.items():
             if isinstance(val, Module):
                 yield (name, val)
 
     def self_named_parameters(self):
-        """Yields a sequence of (str, Param) for direct children of this
-           module. May be overridden.
-
-        """
+        """Yields a sequence of (str, Param) for direct children of this module. May be overridden."""
         for (name, val) in self.__dict__.items():
             if isinstance(val, Param):
                 yield (name, val)
 
     def self_init_weights(self, cx):
-        """Initializes weights for this network's parameters. May be overriden
-           for custom initialization. Child modules are initialized
-           before parents.
-
-        """
+        """Initializes weights for this network's parameters. May be overridden for custom initialization. Child modules are initialized before parents."""
         for (name, par) in self.self_named_parameters():
             if par.initializer is not None:
                 cx[par] = par.initializer(cx.rng.split())
 
     def init_weights(self, key):
-        """Attaches names to parameters and returns initialized dict of
-           parameters by name.
-
-        """
+        """Attaches names to parameters and returns initialized dict of parameters by name."""
         self.labeled_parameters_()
         cx = Context({}, key)
         for module in self.gen_postorder_modules():
@@ -172,27 +157,26 @@ class Module(object):
         return self.parameters()
 
     def gen_named_modules(self):
-        "Yields (str, Module) for all descendants of this module."
+        """Yields (str, Module) for all descendants of this module."""
         for (name, val) in self.self_named_modules():
             yield (name, val)
             for (k, v) in val.gen_named_modules():
-                yield (name+'.'+k, v)
+                yield (name + '.' + k, v)
 
     def gen_postorder_modules(self):
-        "Yields Module for all descendants of this module (postorder traversal)."
+        """Yields Module for all descendants of this module (postorder traversal)."""
         for (name, mod) in self.self_named_modules():
             for submod in mod.gen_postorder_modules():
                 yield submod
             yield mod
 
     def gen_named_parameters(self):
-        "Yields (str, Param) for this module and all descendants."
+        """Yields (str, Param) for this module and all descendants."""
         for (name, par) in self.self_named_parameters():
             yield (name, par)
-
         for (name, mod) in self.self_named_modules():
             for (k, v) in mod.gen_named_parameters():
-                yield (name+'.'+k, v)
+                yield (name + '.' + k, v)
 
     def named_parameters(self):
         return list(self.gen_named_parameters())
@@ -225,14 +209,14 @@ class Module(object):
                     print(msg, file=sys.stderr)
                     continue
 
-            px[p.name] = jax.numpy.asarray(state[k])
+            px[p.name] = jnp.asarray(state[k])
         return px
 
     def _get_name(self):
         return self.__class__.__name__
 
     def extra_repr(self) -> str:
-        r"""Set the extra representation of the module
+        """Set the extra representation of the module.
 
         To print customized extra information, you should re-implement
         this method in your own modules. Both single-line and multi-line
@@ -262,6 +246,5 @@ class Module(object):
                 main_str += extra_lines[0]
             else:
                 main_str += '\n  ' + '\n  '.join(lines) + '\n'
-
         main_str += ')'
         return main_str
